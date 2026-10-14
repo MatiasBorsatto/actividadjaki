@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sistema Integrado de Costos e Ingresos</title>
+<style>
+    :root {
+        --bg: #f1f4f9;
+        --card: #ffffff;
+        --text: #111827;
+        --muted: #4b5563;
+        --border: #9ca3af;
+        --accent: #0b3d6e;
+        --ok: #14532d;
+        --err: #7f1d1d;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+    }
+    header { background: var(--accent); color: #fff; padding: 18px 24px; }
+    header h1 { margin: 0; font-size: 1.3rem; }
+    header p { margin: 4px 0 0; font-size: .9rem; opacity: .9; }
+    main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px 16px 32px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 16px;
+    }
+    .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .card h2 { margin: 0; font-size: 1.05rem; }
+    .card h2 span { color: var(--accent); }
+    .desc { margin: 0; font-size: .82rem; color: var(--muted); }
+
+    /* Controles en forma de barra: se arrastran o se usan con las flechas del teclado */
+    .ctl { display: flex; flex-direction: column; gap: 3px; font-size: .85rem; margin-bottom: 6px; }
+    .ctl-top { display: flex; justify-content: space-between; align-items: baseline; }
+    .ctl-top output { font-weight: 700; font-variant-numeric: tabular-nums; }
+    input[type="range"] {
+        -webkit-appearance: none; appearance: none;
+        width: 100%; height: 22px; margin: 0; cursor: pointer;
+        border: 1px solid var(--border); border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) var(--p, 0%), #e5e7eb var(--p, 0%));
+    }
+    input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 8px; height: 28px;
+        background: #fff; border: 2px solid var(--text); border-radius: 3px;
+    }
+    input[type="range"]::-moz-range-thumb {
+        width: 6px; height: 26px; background: #fff; border: 2px solid var(--text); border-radius: 3px;
+    }
+    input[type="range"]:focus-visible { outline: 3px solid #f59e0b; outline-offset: 2px; }
+    .switch { display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 600; }
+    .switch input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+    .result {
+        padding: 10px 12px; background: #eef2f7; border-radius: 6px; border-left: 6px solid var(--accent);
+        font-weight: 700; font-size: 1.1rem; min-height: 44px;
+    }
+    .result.error {
+        background: #fff; color: var(--err); border: 2px solid var(--err); border-left-width: 6px;
+        font-weight: 600; font-size: .9rem;
+    }
+    .result.error::before { content: "⚠ Error: "; font-weight: 700; }
+    .result[hidden] { display: none; }
+
+    /* Gráfico de torta (dona) de cada módulo */
+    .pie { display: flex; align-items: center; gap: 14px; margin-top: auto; }
+    .pie svg { width: 130px; height: 130px; flex: none; transform: rotate(-90deg); }
+    .pie .ring-bg { fill: none; stroke: #e5e7eb; stroke-width: 6; }
+    .pie circle.seg { fill: none; stroke-width: 6; }
+    .legend { list-style: none; margin: 0; padding: 0; font-size: .82rem; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+    .legend li { display: grid; grid-template-columns: 12px 1fr auto; gap: 6px; align-items: center; }
+    .legend i { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #111827; display: block; }
+    .legend b { font-variant-numeric: tabular-nums; }
+
+    .summary { grid-column: 1 / -1; border: 3px solid var(--accent); }
+    .summary table { width: 100%; border-collapse: collapse; }
+    .summary td { padding: 7px 4px; border-bottom: 1px solid var(--border); }
+    .summary td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    .summary tr.total td { font-weight: 700; font-size: 1.05rem; }
+    .summary tr.cost td:last-child { color: var(--err); }
+    .summary tr.net td { font-weight: 700; color: var(--ok); border-bottom: none; }
+    .note { font-size: .78rem; color: var(--muted); margin: 0; }
+    .chart { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
+    .bar-row { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: center; font-size: .9rem; }
+    .bar-track { background: #eef2f7; border: 1px solid var(--border); border-radius: 4px; height: 26px; position: relative; }
+    .bar { height: 100%; border-radius: 3px; min-width: 2px; }
+    .bar-val {
+        position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-weight: 700; background: #fff;
+        padding: 0 5px; border-radius: 3px; border: 1px solid var(--border); font-size: .8rem;
+    }
+    .b1 { background: #0072B2; } .b2 { background: #E69F00; } .b3 { background: #56B4E9; } .b4 { background: #009E73; }
+    .b6 { background: #CC79A7; }
+    .b5 { background: repeating-linear-gradient(45deg, #7f1d1d 0 6px, #fff 6px 10px); border: 1px solid #7f1d1d; }
+    .card h2 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .fact {
+        flex: none; width: 36px; height: 36px; display: grid; place-items: center; cursor: pointer;
+        background: #fff; color: var(--accent); border: 2px solid var(--accent); border-radius: 8px;
+    }
+    .fact:hover { background: var(--accent); color: #fff; }
+    .fact:focus-visible { outline: 3px solid #f59e0b; outline-offset: 2px; }
+    .fact[disabled] { opacity: .4; cursor: not-allowed; }
+    .fact svg { width: 20px; height: 20px; }
+    dialog#factura { border: 2px solid var(--text); border-radius: 8px; padding: 0; width: min(560px, 94vw); color: var(--text); }
+    dialog#factura::backdrop { background: rgba(17, 24, 39, .6); }
+    .inv { padding: 22px 24px; font-size: .92rem; }
+    .inv h3 { margin: 0 0 2px; font-size: 1.2rem; }
+    .inv .meta { display: flex; justify-content: space-between; color: var(--muted); font-size: .85rem; border-bottom: 2px solid var(--text); padding-bottom: 8px; margin-bottom: 10px; }
+    .inv h4 { margin: 14px 0 4px; font-size: .9rem; text-transform: uppercase; letter-spacing: .04em; }
+    .inv table { width: 100%; border-collapse: collapse; }
+    .inv td { padding: 4px 0; border-bottom: 1px solid #d1d5db; }
+    .inv td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    .inv .tot { display: flex; justify-content: space-between; margin-top: 12px; padding-top: 8px; border-top: 2px solid var(--text); font-size: 1.2rem; font-weight: 700; }
+    .inv .aviso { margin: 12px 0 0; font-size: .75rem; color: var(--muted); }
+    .inv-acciones { display: flex; justify-content: flex-end; gap: 8px; padding: 0 24px 18px; }
+    .inv-acciones button { padding: 8px 16px; font-size: .95rem; border-radius: 6px; cursor: pointer; border: 2px solid var(--accent); background: #fff; color: var(--accent); font-weight: 600; }
+    .inv-acciones button.primario { background: var(--accent); color: #fff; }
+    dialog#factura { width: min(860px, 96vw); }
+    .arca { font-size: .8rem; color: #000; background: #fff; padding: 14px 16px; position: relative; }
+    .arca .ficticio { text-align: center; font-weight: 700; border: 2px dashed var(--err); color: var(--err); padding: 4px; margin-bottom: 8px; letter-spacing: .05em; }
+    .arca .orig { text-align: center; font-weight: 700; border: 1px solid #000; padding: 2px; font-size: .95rem; }
+    .arca .cab { display: grid; grid-template-columns: 1fr 70px 1fr; border: 1px solid #000; }
+    .arca .cab > div { padding: 8px 10px; }
+    .arca .cab .letra { border-left: 1px solid #000; border-right: 1px solid #000; text-align: center; padding: 4px; }
+    .arca .letra b { display: block; font-size: 2.2rem; line-height: 1.1; border-bottom: 1px solid #000; }
+    .arca .letra small { font-size: .65rem; display: block; margin-top: 2px; }
+    .arca h3 { margin: 0 0 4px; font-size: 1.05rem; }
+    .arca .razon { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+    .arca p { margin: 2px 0; }
+    .arca .caja { border: 1px solid #000; border-top: none; padding: 6px 10px; }
+    .arca .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
+    .arca table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .arca th { background: #e5e7eb; border: 1px solid #000; padding: 3px 4px; font-size: .72rem; text-align: left; }
+    .arca td { border: none; border-bottom: 1px solid #d1d5db; padding: 4px; font-variant-numeric: tabular-nums; }
+    .arca th.n, .arca td.n { text-align: right; }
+    .arca .totales { margin: 8px 0 0 auto; width: 55%; }
+    .arca .totales div { display: flex; justify-content: space-between; padding: 2px 0; }
+    .arca .totales .final { border-top: 2px solid #000; font-weight: 700; font-size: .95rem; margin-top: 4px; padding-top: 4px; }
+    .arca .transp { margin-top: 10px; border: 1px solid #000; padding: 6px 10px; }
+    .arca .pie { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: center; border: 1px solid #000; padding: 8px 10px; margin-top: 10px; }
+    .arca .qr { width: 100px; height: 100px; border: 2px dashed #6b7280; display: grid; place-items: center; text-align: center; font-size: .65rem; color: #4b5563; }
+    .arca .aviso { font-size: .7rem; color: #4b5563; margin-top: 8px; }
+    @media (max-width: 640px) { .arca .cab { grid-template-columns: 1fr; } .arca .cab .letra { border: none; border-top: 1px solid #000; border-bottom: 1px solid #000; } .arca .totales { width: 100%; } }
+    @media print {
+        body > *:not(dialog) { display: none !important; }
+        dialog#factura { position: static; width: 100%; border: none; }
+        .inv-acciones { display: none; }
+    }
+    @media (max-width: 420px) { .bar-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>Sistema Integrado de Costos e Ingresos</h1>
+    <p>Arrastrá las barras (o usá las flechas del teclado) para cambiar los datos; los gráficos se actualizan al instante.</p>
+</header>
+
+<main>
+    <section class="card" id="fondos">
+        <h2><span>1.</span> Fondos de inversión</h2>
+        <p class="desc">Ganancia generada solo en el mes indicado (interés compuesto).</p>
+        <div id="c-fondos"></div>
+        <div class="result" id="r-fondos"></div>
+        <div class="pie" id="p-fondos"></div>
+    </section>
+
+    <section class="card" id="abonos">
+        <h2><span>2.</span> Suscripciones / abonos</h2>
+        <p class="desc">10% de descuento corporativo si hay más de 500 usuarios.</p>
+        <div id="c-abonos"></div>
+        <div class="result" id="r-abonos"></div>
+        <div class="pie" id="p-abonos"></div>
+    </section>
+
+    <section class="card" id="reparaciones">
+        <h2><span>3.</span> Reparaciones y servicios</h2>
+        <p class="desc">Mano de obra + repuesto con recargo (20% a 40%).</p>
+        <div id="c-reparaciones"></div>
+        <div class="result" id="r-reparaciones"></div>
+        <div class="pie" id="p-reparaciones"></div>
+    </section>
+
+    <section class="card" id="ventas">
+        <h2><span>4.</span> Ventas en mostrador</h2>
+        <p class="desc">Suma de productos; 15% de recargo si se paga con tarjeta.</p>
+        <div id="c-ventas"></div>
+        <label class="switch"><input type="checkbox" id="v-tarjeta" checked> Pago con tarjeta</label>
+        <div class="result" id="r-ventas"></div>
+        <div class="pie" id="p-ventas"></div>
+    </section>
+
+    <section class="card" id="servidores">
+        <h2><span>5.</span> Costo de servidores</h2>
+        <p class="desc">Horas × tarifa + $20 por cada GB de la base.</p>
+        <div id="c-servidores"></div>
+        <div class="result" id="r-servidores"></div>
+        <div class="pie" id="p-servidores"></div>
+    </section>
+
+    <section class="card" id="compras">
+        <h2><span>6.</span> Compra de mercadería</h2>
+        <p class="desc">Costo de reponer stock más el impuesto de importación.</p>
+        <div id="c-compras"></div>
+        <div class="result" id="r-compras"></div>
+        <div class="pie" id="p-compras"></div>
+    </section>
+
+    <section class="card" id="sueldos">
+        <h2><span>7.</span> Liquidación de sueldo</h2>
+        <p class="desc">Sueldo base + horas extra, menos 11% de jubilación (neto).</p>
+        <div id="c-sueldos"></div>
+        <div class="result" id="r-sueldos"></div>
+        <div class="pie" id="p-sueldos"></div>
+    </section>
+
+    <section class="card" id="logistica">
+        <h2><span>8.</span> Logística (envíos)</h2>
+        <p class="desc">Cada envío cuesta $500 por km; se muestra lo recaudado en el día.</p>
+        <div id="c-logistica"></div>
+        <div class="result" id="r-logistica"></div>
+        <div class="pie" id="p-logistica"></div>
+    </section>
+
+    <section class="card summary" id="resumen">
+        <h2>Resumen financiero de la empresa</h2>
+        <div class="chart" id="chart" aria-label="Gráfico comparativo de ingresos y costo"></div>
+        <table>
+            <tr><td>Ganancia de fondos</td><td id="t-fondos"></td></tr>
+            <tr><td>Ingresos por abonos</td><td id="t-abonos"></td></tr>
+            <tr><td>Ingresos por reparaciones</td><td id="t-reparaciones"></td></tr>
+            <tr><td>Ingresos por ventas</td><td id="t-ventas"></td></tr>
+            <tr><td>Ingresos por logística</td><td id="t-logistica"></td></tr>
+            <tr class="total"><td>Total general (ingresos)</td><td id="t-total"></td></tr>
+            <tr class="cost"><td>(−) Costo de servidores</td><td id="t-servidores"></td></tr>
+            <tr class="cost"><td>(−) Compra de mercadería</td><td id="t-compras"></td></tr>
+            <tr class="cost"><td>(−) Sueldos (neto)</td><td id="t-sueldos"></td></tr>
+            <tr class="total cost"><td>Total de costos</td><td id="t-costos"></td></tr>
+            <tr class="net"><td>Resultado neto (ingresos − total de costos)</td><td id="t-neto"></td></tr>
+        </table>
+        <p class="note">El total general suma solo ingresos; los costos (servidores, compras y sueldos) se unifican en un total que se resta en el resultado neto.</p>
+        <div class="result error" id="r-resumen" hidden></div>
+    </section>
+</main>
+
+<dialog id="factura" aria-labelledby="inv-titulo">
+    <div class="inv" id="inv-contenido"></div>
+    <div class="inv-acciones">
+        <button type="button" id="inv-cerrar">Cerrar</button>
+        <button type="button" class="primario" id="inv-imprimir">Imprimir / Guardar PDF</button>
+    </div>
+</dialog>
+
+<!-- Los módulos usan CommonJS (module.exports / require); este shim los hace funcionar en el navegador.
+     Cada módulo se carga primero y index.js al final, porque index.js los importa con require. -->
+<script>
+    var REGISTRO = {};
+    var module = { exports: {} };
+    function require(ruta) { return REGISTRO[ruta.replace("./", "")]; }
+</script>
+<script src="calcularInversiones.js"></script>
+<script>REGISTRO["calcularInversiones.js"] = module.exports; module = { exports: {} };</script>
+<script src="calcularIngresosSuscripcion.js"></script>
+<script>REGISTRO["calcularIngresosSuscripcion.js"] = module.exports; module = { exports: {} };</script>
+<script src="servicioTecnico.js"></script>
+<script>REGISTRO["servicioTecnico.js"] = module.exports; module = { exports: {} };</script>
+<script src="ventasMostrador.js"></script>
+<script>REGISTRO["ventasMostrador.js"] = module.exports; module = { exports: {} };</script>
+<script src="costoServidores.js"></script>
+<script>REGISTRO["costoServidores.js"] = module.exports; module = { exports: {} };</script>
+<script src="compraMercaderia.js"></script>
+<script>REGISTRO["compraMercaderia.js"] = module.exports; module = { exports: {} };</script>
+<script src="liquidarSueldo.js"></script>
+<script>REGISTRO["liquidarSueldo.js"] = module.exports; module = { exports: {} };</script>
+<script src="logistica.js"></script>
+<script>REGISTRO["logistica.js"] = module.exports; module = { exports: {} };</script>
+<script src="index.js"></script>
+<script>
+    const M = module.exports;
+    const $ = id => document.getElementById(id);
+    const money = n => "$" + n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const N = n => n.toLocaleString("es-AR");
+    const COLORES = ["#0072B2", "#E69F00", "#56B4E9", "#009E73", "#CC79A7"];
+
+    // Barras de cada módulo: [id, etiqueta, min, max, paso, valor inicial, formato]
+    const CONTROLES = {
+        fondos: [
+            ["f-capital", "Capital invertido", 0, 1000000, 10000, 800000, v => money(v)],
+            ["f-tasa", "Interés mensual", 0, 10, 0.1, 2, v => v + " %"],
+            ["f-mes", "Mes", 1, 36, 1, 3, v => "Mes " + v]
+        ],
+        abonos: [
+            ["a-usuarios", "Usuarios activos", 0, 2000, 1, 600, v => N(v)],
+            ["a-precio", "Precio de la cuota", 0, 50000, 500, 8000, v => money(v)]
+        ],
+        reparaciones: [
+            ["p-horas", "Horas trabajadas", 0, 40, 0.5, 3, v => v + " h"],
+            ["p-tarifa", "Tarifa por hora", 0, 50000, 500, 15000, v => money(v)],
+            ["p-repuesto", "Precio del repuesto", 0, 300000, 1000, 45000, v => money(v)],
+            ["p-recargo", "Recargo sobre repuestos", 20, 40, 1, 30, v => v + " %"]
+        ],
+        ventas: [
+            ["v-p1", "Producto 1", 0, 150000, 500, 18500, v => money(v)],
+            ["v-p2", "Producto 2", 0, 150000, 500, 9200, v => money(v)],
+            ["v-p3", "Producto 3", 0, 150000, 500, 32000, v => money(v)]
+        ],
+        servidores: [
+            ["s-horas", "Horas encendidos", 0, 744, 1, 720, v => N(v) + " h"],
+            ["s-tarifa", "Precio por hora", 0, 500, 5, 120, v => money(v)],
+            ["s-gb", "GB de almacenamiento", 0, 1000, 5, 100, v => N(v) + " GB"]
+        ],
+        compras: [
+            ["m-precio", "Precio de costo por unidad", 0, 200000, 500, 12000, v => money(v)],
+            ["m-cant", "Cantidad de unidades", 0, 500, 1, 50, v => N(v)],
+            ["m-imp", "Impuesto de importación", 0, 100, 1, 35, v => v + " %"]
+        ],
+        sueldos: [
+            ["u-base", "Sueldo base", 0, 5000000, 10000, 1200000, v => money(v)],
+            ["u-horas", "Horas extra", 0, 80, 1, 10, v => v + " h"],
+            ["u-valor", "Valor de la hora extra", 0, 30000, 100, 9000, v => money(v)]
+        ],
+        logistica: [
+            ["l-e1", "Envío 1", 1, 300, 1, 12, v => v + " km"],
+            ["l-e2", "Envío 2", 1, 300, 1, 35, v => v + " km"],
+            ["l-e3", "Envío 3", 1, 300, 1, 80, v => v + " km"]
+        ]
+    };
+    const FORMATO = {};
+    const ULTIMO = {};   // último cálculo válido de cada módulo, base de la factura
+    const TITULOS = {};
+
+    function construirControles() {
+        for (const [mod, lista] of Object.entries(CONTROLES)) {
+            $("c-" + mod).innerHTML = lista.map(([id, et, min, max, paso, ini]) =>
+                '<div class="ctl"><div class="ctl-top"><label for="' + id + '">' + et + '</label><output id="o-' + id + '"></output></div>' +
+                '<input type="range" id="' + id + '" min="' + min + '" max="' + max + '" step="' + paso + '" value="' + ini + '"></div>').join("");
+            lista.forEach(c => { FORMATO[c[0]] = c[6]; });
+        }
+    }
+    const num = id => parseFloat($(id).value);
+
+    // Refresca el rótulo de valor y el relleno de cada barra
+    function pintarControles() {
+        document.querySelectorAll('input[type="range"]').forEach(r => {
+            const p = (r.value - r.min) / (r.max - r.min) * 100;
+            r.style.setProperty("--p", p + "%");
+            $("o-" + r.id).textContent = FORMATO[r.id](parseFloat(r.value));
+        });
+    }
+
+    // Gráfico de torta (dona) con leyenda escrita: nombre, porcentaje y valor de cada porción
+    function torta(idDestino, porciones) {
+        const total = porciones.reduce((s, p) => s + p[1], 0);
+        let acum = 0, segs = "";
+        if (total > 0) {
+            porciones.forEach(([, v], i) => {
+                const pct = v / total * 100;
+                segs += '<circle class="seg" cx="21" cy="21" r="15.9155" stroke="' + COLORES[i % COLORES.length] +
+                    '" stroke-dasharray="' + pct + ' ' + (100 - pct) + '" stroke-dashoffset="' + (-acum) + '"/>';
+                acum += pct;
+            });
+        }
+        const leyenda = porciones.map(([n, v], i) =>
+            '<li><i style="background:' + COLORES[i % COLORES.length] + '"></i><span>' + n + '</span><b>' +
+            (total > 0 ? Math.round(v / total * 100) + "% · " : "") + money(v) + '</b></li>').join("");
+        $(idDestino).innerHTML = '<svg viewBox="0 0 42 42" role="img" aria-label="Gráfico de torta"><circle class="ring-bg" cx="21" cy="21" r="15.9155"/>' +
+            segs + '</svg><ul class="legend">' + leyenda + '</ul>';
+    }
+
+    function leerDatos() {
+        return {
+            fondoInversion: { capital: num("f-capital"), tasaInteres: num("f-tasa"), mes: num("f-mes") },
+            abonos: { cantUsuarios: num("a-usuarios"), precioCuota: num("a-precio") },
+            reparaciones: [{
+                cantHoras: num("p-horas"), tarifaHora: num("p-tarifa"),
+                precioRepuesto: num("p-repuesto"), porcentajeRecargo: num("p-recargo") / 100
+            }],
+            ventasMostrador: [{
+                listaProductos: [num("v-p1"), num("v-p2"), num("v-p3")],
+                tarjeta: $("v-tarjeta").checked ? 1 : 0
+            }],
+            servidores: { cantHoras: num("s-horas"), tarifaHora: num("s-tarifa"), gbAlmacenamiento: num("s-gb") },
+            compras: { precioCosto: num("m-precio"), cantidad: num("m-cant"), impuestoImportacion: num("m-imp") },
+            sueldos: [{ sueldoBase: num("u-base"), horasExtra: num("u-horas"), valorHoraExtra: num("u-valor") }],
+            envios: [num("l-e1"), num("l-e2"), num("l-e3")]
+        };
+    }
+
+    // Calcula un módulo, muestra el total y dibuja su torta; si falla, muestra el error
+    function modulo(mod, calcular, porciones) {
+        const el = $("r-" + mod);
+        try {
+            const valor = calcular();
+            el.className = "result";
+            el.textContent = money(valor);
+            const desglose = porciones(valor);
+            torta("p-" + mod, desglose);
+            ULTIMO[mod] = { total: valor, desglose: desglose };
+        } catch (e) {
+            el.className = "result error";
+            el.textContent = e.message;
+            $("p-" + mod).innerHTML = "";
+            delete ULTIMO[mod];
+        }
+    }
+
+    function dibujarGrafico(res) {
+        const filas = [
+            ["Fondos", res.gananciaFondos, "b1"], ["Abonos", res.ingresosAbonos, "b2"],
+            ["Reparaciones", res.ingresosReparaciones, "b3"], ["Ventas", res.ingresosVentas, "b4"],
+            ["Logística", res.ingresosLogistica, "b6"],
+            ["Costo servidores (−)", res.costoServidores, "b5"], ["Compras (−)", res.costoCompras, "b5"],
+            ["Sueldos (−)", res.costoSueldos, "b5"]
+        ];
+        const max = Math.max(...filas.map(f => f[1]), 1);
+        $("chart").innerHTML = filas.map(([n, v, c]) =>
+            '<div class="bar-row"><span>' + n + '</span><div class="bar-track"><div class="bar ' + c +
+            '" style="width:' + (v / max * 100) + '%"></div><span class="bar-val">' + money(v) + '</span></div></div>').join("");
+    }
+
+    function actualizar() {
+        pintarControles();
+        const d = leerDatos();
+        const f = d.fondoInversion, a = d.abonos, r = d.reparaciones[0], v = d.ventasMostrador[0], s = d.servidores;
+
+        modulo("fondos", () => M.calcularGananciaMensual(f.capital, f.tasaInteres, f.mes),
+            g => [["Capital al inicio del mes", f.capital * Math.pow(1 + f.tasaInteres / 100, f.mes)], ["Ganancia del mes", g]]);
+        modulo("abonos", () => M.calcularIngresosAbonos(a.cantUsuarios, a.precioCuota),
+            t => [["Cobrado", t], ["Descuento corporativo", a.cantUsuarios * a.precioCuota - t]]);
+        modulo("reparaciones", () => M.calcularTotalReparacion(r.cantHoras, r.tarifaHora, r.precioRepuesto, r.porcentajeRecargo),
+            () => [["Mano de obra", r.cantHoras * r.tarifaHora], ["Repuesto", r.precioRepuesto],
+                   ["Recargo", r.precioRepuesto * r.porcentajeRecargo]]);
+        modulo("ventas", () => M.calcularVenta(v.listaProductos, v.tarjeta),
+            t => [...v.listaProductos.map((p, i) => ["Producto " + (i + 1), p]),
+                  ["Recargo tarjeta", t - v.listaProductos.reduce((x, y) => x + y, 0)]]);
+        modulo("servidores", () => M.calcularCostoServidores(s.cantHoras, s.tarifaHora, s.gbAlmacenamiento),
+            () => [["Horas de servidor", s.cantHoras * s.tarifaHora], ["Almacenamiento (GB × $20)", s.gbAlmacenamiento * 20]]);
+
+        const c = d.compras, u = d.sueldos[0], envios = d.envios;
+        modulo("compras", () => M.calcularCompraMercaderia(c.precioCosto, c.cantidad, c.impuestoImportacion),
+            () => [["Costo base", c.precioCosto * c.cantidad],
+                   ["Impuesto de importación", c.precioCosto * c.cantidad * c.impuestoImportacion / 100]]);
+        modulo("sueldos", () => M.liquidarSueldo(u.sueldoBase, u.horasExtra, u.valorHoraExtra),
+            neto => [["Sueldo neto", neto], ["Jubilación (11%)", (u.sueldoBase + u.horasExtra * u.valorHoraExtra) * 0.11]]);
+        modulo("logistica", () => {
+            const registrar = M.crearGestorPedidos();
+            return envios.map(km => registrar(km).totalRecaudadoDelDia).pop();
+        }, () => envios.map((km, i) => ["Envío " + (i + 1) + " (" + km + " km)", km * 500]));
+
+        const err = $("r-resumen");
+        try {
+            const res = M.calcularResumenEmpresa(d);
+            $("t-fondos").textContent = money(res.gananciaFondos);
+            $("t-abonos").textContent = money(res.ingresosAbonos);
+            $("t-reparaciones").textContent = money(res.ingresosReparaciones);
+            $("t-ventas").textContent = money(res.ingresosVentas);
+            $("t-total").textContent = money(res.totalGeneral);
+            $("t-logistica").textContent = money(res.ingresosLogistica);
+            $("t-servidores").textContent = money(res.costoServidores);
+            $("t-compras").textContent = money(res.costoCompras);
+            $("t-sueldos").textContent = money(res.costoSueldos);
+            $("t-costos").textContent = money(res.totalCostos);
+            $("t-neto").textContent = money(res.resultadoNeto);
+            dibujarGrafico(res);
+            err.hidden = true;
+        } catch (e) {
+            err.textContent = "Resumen no disponible: " + e.message;
+            err.hidden = false;
+        }
+    }
+
+    // ---- Factura del módulo ----
+    let numeroFactura = 0;
+    const ICONO_FACTURA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h3"/></svg>';
+
+    function agregarBotonesFactura() {
+        // La factura solo está disponible en el módulo de logística
+        ["logistica"].forEach(mod => {
+            const h2 = document.querySelector("#" + mod + " h2");
+            TITULOS[mod] = h2.textContent.trim();
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "fact";
+            b.title = "Generar factura";
+            b.setAttribute("aria-label", "Generar factura de " + TITULOS[mod]);
+            b.innerHTML = ICONO_FACTURA;
+            b.addEventListener("click", () => mostrarFactura(mod));
+            h2.appendChild(b);
+        });
+    }
+
+    function filas(lista) {
+        return "<table>" + lista.map(f => "<tr><td>" + f[0] + "</td><td>" + f[1] + "</td></tr>").join("") + "</table>";
+    }
+
+    // Datos FICTICIOS del emisor (no corresponden a ninguna empresa real)
+    const EMISOR = {
+        razon: "EMPRESA DEMO S.A. (FICTICIA)",
+        domicilio: "Av. Ejemplo 1234, Ciudad Autónoma de Buenos Aires",
+        iva: "IVA Responsable Inscripto",
+        cuit: "30-00000000-0",
+        iibb: "000-000000-0",
+        inicio: "01/01/2020",
+        puntoVenta: "0001"
+    };
+
+    function filasFactura(mod, u) {
+        // Logística: cantidad = km, precio unitario = $500 por km. Otros módulos: un renglón por concepto.
+        if (mod === "logistica") {
+            return ["l-e1", "l-e2", "l-e3"].map((id, i) => ({ cod: "LOG-" + (i + 1), desc: "Servicio de envío " + (i + 1), cant: num(id), um: "Kilómetros", pu: 500 }));
+        }
+        return u.desglose.map((d, i) => ({ cod: String(i + 1).padStart(3, "0"), desc: d[0], cant: 1, um: "Unidad", pu: d[1] }));
+    }
+
+    function mostrarFactura(mod) {
+        const u = ULTIMO[mod];
+        if (!u) { alert("Este módulo tiene un error: corregí los datos para generar la factura."); return; }
+        numeroFactura += 1;
+        const hoy = new Date();
+        const fecha = hoy.toLocaleDateString("es-AR");
+        const vtoCae = new Date(hoy.getTime() + 10 * 86400000).toLocaleDateString("es-AR");
+        let cae = "";
+        for (let i = 0; i < 14; i++) cae += Math.floor(Math.random() * 10);
+        const total = u.total;
+        const ivaContenido = total - total / 1.21;   // IVA 21% incluido en el precio final (Factura B)
+        const items = filasFactura(mod, u);
+        const detalle = items.map(f =>
+            "<tr><td>" + f.cod + "</td><td>" + f.desc + "</td><td class='n'>" + N(f.cant) + "</td><td>" + f.um + "</td><td class='n'>" +
+            money(f.pu) + "</td><td class='n'>0,00</td><td class='n'>0,00</td><td class='n'>" + money(f.cant * f.pu) + "</td></tr>").join("");
+
+        $("inv-contenido").innerHTML =
+            '<div class="arca">' +
+            '<div class="ficticio">DOCUMENTO FICTICIO · SIN VALIDEZ FISCAL · NO AUTORIZADO POR ARCA</div>' +
+            '<div class="orig">ORIGINAL</div>' +
+            '<div class="cab">' +
+              '<div><div class="razon" id="inv-titulo">' + EMISOR.razon + '</div>' +
+                '<p><b>Domicilio Comercial:</b> ' + EMISOR.domicilio + '</p>' +
+                '<p><b>Condición frente al IVA:</b> ' + EMISOR.iva + '</p></div>' +
+              '<div class="letra"><b>B</b><small>COD. 06</small></div>' +
+              '<div><h3>FACTURA</h3>' +
+                '<p><b>Punto de Venta:</b> ' + EMISOR.puntoVenta + ' &nbsp; <b>Comp. Nro:</b> ' + String(numeroFactura).padStart(8, "0") + '</p>' +
+                '<p><b>Fecha de Emisión:</b> ' + fecha + '</p>' +
+                '<p><b>CUIT:</b> ' + EMISOR.cuit + '</p>' +
+                '<p><b>Ingresos Brutos:</b> ' + EMISOR.iibb + '</p>' +
+                '<p><b>Fecha de Inicio de Actividades:</b> ' + EMISOR.inicio + '</p></div>' +
+            '</div>' +
+            '<div class="caja dos"><span><b>Período Facturado Desde:</b> ' + fecha + '</span><span><b>Hasta:</b> ' + fecha + '</span>' +
+              '<span><b>Fecha de Vto. para el pago:</b> ' + fecha + '</span></div>' +
+            '<div class="caja dos">' +
+              '<span><b>Apellido y Nombre / Razón Social:</b> Consumidor Final</span>' +
+              '<span><b>Condición frente al IVA:</b> Consumidor Final</span>' +
+              '<span><b>CUIT/CUIL/DNI:</b> Sin identificar</span>' +
+              '<span><b>Domicilio:</b> -</span>' +
+              '<span><b>Condición de venta:</b> Contado</span></div>' +
+            '<table><thead><tr><th>Código</th><th>Producto / Servicio</th><th class="n">Cantidad</th><th>U. Medida</th>' +
+              '<th class="n">Precio Unit.</th><th class="n">% Bonif</th><th class="n">Imp. Bonif.</th><th class="n">Subtotal</th></tr></thead>' +
+              '<tbody>' + detalle + '</tbody></table>' +
+            '<div class="totales">' +
+              '<div><span>Subtotal:</span><span>' + money(total) + '</span></div>' +
+              '<div><span>Importe Otros Tributos:</span><span>' + money(0) + '</span></div>' +
+              '<div class="final"><span>Importe Total:</span><span>' + money(total) + '</span></div></div>' +
+            '<div class="transp"><b>Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</b>' +
+              '<p>IVA Contenido: ' + money(ivaContenido) + '</p>' +
+              '<p>Otros Impuestos Nacionales Indirectos: ' + money(0) + '</p></div>' +
+            '<div class="pie"><div class="qr">QR FICTICIO<br>(sin validez)</div>' +
+              '<div><p><b>CAE N°:</b> ' + cae + ' <i>(ficticio)</i></p><p><b>Fecha de Vto. de CAE:</b> ' + vtoCae + '</p>' +
+              '<p><b>Comprobante FICTICIO</b> — no fue autorizado por ARCA.</p></div></div>' +
+            '<p class="aviso">Ejemplo generado con fines demostrativos siguiendo el formato de comprobante electrónico de ARCA (ex AFIP). ' +
+              'La emisión de una factura real requiere CUIT, punto de venta habilitado y la obtención del CAE mediante los servicios de ARCA.</p>' +
+            '</div>';
+        $("factura").showModal();
+    }
+
+    $("inv-cerrar").addEventListener("click", () => $("factura").close());
+    $("inv-imprimir").addEventListener("click", () => window.print());
+
+    construirControles();
+    agregarBotonesFactura();
+    document.querySelectorAll("input").forEach(i => i.addEventListener("input", actualizar));
+    actualizar();
+</script>
+</body>
+</html>
